@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: nestwise-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on:
+      - middleman-api
+    networks:
+      - nestwise-network
+
+  middleman-api:
+    build:
+      context: ./services/middleman-api
+    container_name: nestwise-middleman-api
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      CORE_API_URL: http://nestwise-core-api:8081
+      AI_SERVICE_URL: http://ai-service:8082
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nestwise
+      DB_USER: nestwise
+      DB_PASSWORD: password
+    depends_on:
+      - postgres
+    networks:
+      - nestwise-network
+
+  nestwise-core-api:
+    build:
+      context: ./services/nestwise-core-api
+    container_name: nestwise-core-api
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nestwise
+      DB_USER: nestwise
+      DB_PASSWORD: password
+    depends_on:
+      - postgres
+    networks:
+      - nestwise-network
+
+  ai-service:
+    build:
+      context: ./services/ai-service
+    container_name: nestwise-ai-service
+    ports:
+      - "8082:8082"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_URL: http://qdrant:6333
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nestwise
+      DB_USER: nestwise
+      DB_PASSWORD: password
+    depends_on:
+      - qdrant
+      - postgres
+    networks:
+      - nestwise-network
+
+  dashboard-service:
+    build:
+      context: ./services/dashboard-service
+    container_name: nestwise-dashboard
+    ports:
+      - "3001:3000"
+    environment:
+      API_URL: http://middleman-api:8080
+    depends_on:
+      - middleman-api
+    networks:
+      - nestwise-network
+
+  postgres:
+    image: postgres:16
+    container_name: nestwise-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nestwise
+      POSTGRES_USER: nestwise
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nestwise-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: nestwise-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - nestwise-network
+
+networks:
+  nestwise-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  qdrant_data:
