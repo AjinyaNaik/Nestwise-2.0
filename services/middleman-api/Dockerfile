@@ -15,4 +15,4 @@ COPY --from=build /app/publish .
 
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "MiddleManAPI.dll"]
+ENTRYPOINT ["dotnet", "middleman-api.dll"]

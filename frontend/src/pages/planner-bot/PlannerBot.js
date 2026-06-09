@@ -1,0 +1,606 @@
+import * as React from 'react';
+import { useState, useRef } from 'react';
+import { validateToken, clearAuthToken } from '../../hooks/validateToken';
+import InputArea from './components/InputArea';
+import MessagesArea from './components/MessagesArea';
+import Header from './components/Header';
+import PlannerArea from './components/PlannerArea';
+import { motion, AnimatePresence } from 'framer-motion';
+import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
+
+export default function PlannerBot() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [profileData, setProfileData] = useState({});
+  const [animationTriggered, setAnimationTriggered] = useState(false);
+  const initialized = useRef(false);
+  const [conversationTitle, setConversationTitle] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [generatedPlan, setGeneratedPlan] = useState(null); // Store plan from backend (formatted text)
+  const [rawPlanJSON, setRawPlanJSON] = useState(null); // Store raw JSON for database
+  const [planAnimationNeeded, setPlanAnimationNeeded] = useState(false); // For animations related to if plan was recieved.
+  const API_BASE_URL = process.env.REACT_APP_LANGRAPH_URL || "http://localhost:8000";
+  const [isMobilePlannerOpen, setIsMobilePlannerOpen] = useState(false);
+
+
+  const safeMessages = Array.isArray(messages) ? messages : [];
+
+
+
+  React.useEffect(() => {
+    document.title = "NestWise - Planner Bot";
+
+    const timer = setTimeout(() => {
+      setAnimationTriggered(true);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
+
+
+  // ── Start session — optionally with a plan ID ────────────────────────────
+  const startChatSession = React.useCallback(async (planId = null) => {
+    const tokenCheck = await validateToken();
+    if (!tokenCheck.valid) {
+      clearAuthToken();
+      return;
+    }
+
+    // Only check for existing session when starting normally (no planId)
+    if (!planId) {
+      const savedState = loadFromSessionStorage();
+      if (savedState && savedState.sessionId) {
+        console.log('Using existing session from storage');
+        return;
+      }
+    }
+
+    await addBotMessage('Hello! I am NestWiseAI. How can I help you today?');
+    const token = localStorage.getItem('token');
+
+    try {
+      const body = planId ? { plan_id: planId } : {};
+
+      const res = await fetch(`${API_BASE_URL}/chatbot/start`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401) {
+        clearAuthToken();
+        return;
+      }
+
+      if (!res.ok) throw new Error('Failed to start session');
+      const data = await res.json();
+      setSessionId(data.session_id);
+      // If the backend returned a plan, load it into the planner area
+      if (data.plan) {
+        setRawPlanJSON(data.plan.data ?? data.plan);
+        setGeneratedPlan(data.plan.data ?? data.plan);
+        setConversationTitle(data.plan.name || 'NestWise Agent');
+        if (data.plan.profileData) setProfileData(data.plan.profileData);
+        console.log('Plan loaded from session start:', data.plan);
+      }
+
+    } catch (err) {
+      console.error(err);
+      await addBotMessage('Error starting session.');
+    }
+  }, []);
+
+
+
+
+  // Start chat session only after animation completes
+  React.useEffect(() => {
+    if (animationTriggered && !initialized.current) {
+      initialized.current = true;
+
+      const chatSessionTimer = setTimeout(() => {
+        startChatSession();
+      }, 800); // Reduced from 1600 to 800
+
+      return () => clearTimeout(chatSessionTimer);
+    }
+  }, [animationTriggered, startChatSession]);
+
+  // ── Handle plan selected from modal ──────────────────────────────────────
+  const handlePlanSelect = async (planId) => {
+    // Clear all existing state before starting fresh with the selected plan
+    setMessages([]);
+    setInput('');
+    setSending(false);
+    setSessionId(null);
+    setProfileData({});
+    setConversationTitle('');
+    setGeneratedPlan(null);
+    setRawPlanJSON(null);
+    setPlanAnimationNeeded(false);
+    sessionStorage.removeItem('plannerBotState');
+
+
+
+    // Small delay to let state settle before starting new session
+    await new Promise((r) => setTimeout(r, 100));
+    await startChatSession(planId);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+
+
+
+  const addUserMessage = async (content) => {
+    setMessages((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      return [...safePrev, { role: 'user', content: content }];
+    });
+  };
+
+
+
+
+
+
+
+  const addBotMessage = async (content) => {
+    const simulateTypingEffect = (text) => {
+      const chunkSize = Math.ceil(text.length / 10);
+      let i = 0;
+
+      return new Promise((resolve) => {
+        const interval = setInterval(() => {
+          i += chunkSize;
+          const partialText = text.slice(0, i);
+
+          setMessages((prev) => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+            const updated = [...safePrev];
+            const lastIndex = updated.length - 1;
+
+            if (lastIndex >= 0 && updated[lastIndex].role === 'bot' && updated[lastIndex].isTyping) {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                content: partialText,
+              };
+            } else {
+              updated.push({ role: 'bot', content: partialText, isTyping: true });
+            }
+
+            return updated;
+          });
+
+          if (i >= text.length) {
+            clearInterval(interval);
+            resolve(text);
+          }
+        }, 100);
+      });
+    };
+
+    await simulateTypingEffect(content);
+
+    setMessages((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      const updated = [...safePrev];
+      const lastIndex = updated.length - 1;
+
+      if (lastIndex >= 0 && updated[lastIndex].role === 'bot') {
+        updated[lastIndex] = {
+          ...updated[lastIndex],
+          content,
+          isTyping: false,
+        };
+      }
+
+      return updated;
+    });
+  };
+
+
+
+
+
+
+
+
+  const handleSend = async () => {
+    const tokenCheck = await validateToken();
+
+    if (!tokenCheck.valid) {
+      clearAuthToken();
+      return;
+    }
+    if (!input.trim() || sending) return;
+
+    const userInput = input.trim();
+    setInput('');
+    setSending(true);
+    addUserMessage(userInput);
+
+    // Add thinking animation before the API call
+    const addThinkingMessage = () => {
+      setMessages((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return [...safePrev, {
+          role: 'bot',
+          content: '',
+          isThinking: true,
+          id: Date.now() // unique ID for the thinking message
+        }];
+      });
+    };
+
+    const removeThinkingMessage = () => {
+      setMessages((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return safePrev.filter(msg => !msg.isThinking);
+      });
+    };
+
+    // Show thinking animation
+    addThinkingMessage();
+    const token = localStorage.getItem('token');
+
+    try {
+      if (!sessionId) throw new Error('Session not started');
+
+      const res = await fetch(`${API_BASE_URL}/chatbot/answer`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: userInput,
+        }),
+      });
+
+      if (res.status === 401) {
+        removeThinkingMessage();
+        clearAuthToken();
+        return;
+      }
+
+      if (!res.ok) {
+        console.error('Server error:', res.status, await res.text());
+        throw new Error(`Something went wrong. Create a new chat and try again. If the issue persists, contact support.`);
+      }
+
+      const data = await res.json();
+
+      // Debug: log the full response
+      console.log("Full backend response:", data);
+      console.log("from_planner flag:", data.from_planner);
+
+      if (data.real_profile) {
+        setProfileData(data.real_profile);
+      }
+
+      // Getting The Conversation Title Saved To A State To Be Used.
+      if (data.conversation_title) {
+        console.log("Convo Title: ", data.conversation_title);
+        setConversationTitle(data.conversation_title);
+      }
+
+      // Check if response is from planner and extract plan
+      const detectedPlan = detectAndExtractPlan(data.response, data.from_planner);
+      if (data.from_planner) {
+        setGeneratedPlan(data.response);   // already a parsed object
+        setRawPlanJSON(data.response);     // same object, no JSON.parse needed
+        console.log("Structured plan received:", data.response);
+
+        removeThinkingMessage();
+        await addBotMessage("✅ Your personalized retirement plan has been generated successfully! You can view the complete plan on the right side of the screen. \n\nDo you have any other questions about your plan or would you like to adjust any parameters?");
+      } else {
+        removeThinkingMessage();
+        await addBotMessage(data.response);
+      }
+
+
+    }
+    catch (err) {
+
+      console.error(err);
+      removeThinkingMessage();
+      await addBotMessage(`Error: ${err.message}`);
+
+
+    }
+    finally {
+      setSending(false);
+    }
+  };
+
+
+
+
+
+
+
+
+
+  const handleFileUpload = (event) => {
+    const files = event.target.files;
+    if (files.length > 0) console.log('Uploaded files:', files);
+  };
+
+
+
+  //  GET LAST CHAT RESPONSE FOR CONTEXT IN OTHER FUNCTIONS
+  const getLastChatbotResponse = () => {
+    const lastBotMessage = safeMessages
+      .filter(msg => msg.role === 'bot' && !msg.isThinking)
+      .slice(-1)[0];
+    return lastBotMessage ? lastBotMessage.content : '';
+  };
+
+  // Function to extract plan if from_planner flag is true
+  // The backend explicitly tells us when it's a plan response
+  const detectAndExtractPlan = (response, fromPlannerFlag) => {
+    if (!response) return null;
+
+    // Check the explicit from_planner flag from backend
+    console.log("Detecting plan in response. from_planner flag:", fromPlannerFlag);
+    if (fromPlannerFlag === true) {
+      return response;
+    }
+
+    return null;
+  };
+
+
+
+
+
+
+  // -----------------Implentation For Saving Chat State-----------------
+  const saveToSessionStorage = (messages, sessionId, profileData, conversationTitle, generatedPlan, rawPlanJSON, fromPlannerFlag) => {
+    const chatState = {
+      messages,
+      sessionId,
+      profileData,
+      conversationTitle,
+      generatedPlan,
+      rawPlanJSON,
+      planAnimationNeeded,
+      timestamp: Date.now()
+    };
+    sessionStorage.setItem('plannerBotState', JSON.stringify(chatState));
+  };
+
+
+  const loadFromSessionStorage = () => {
+    const saved = sessionStorage.getItem('plannerBotState');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error('Error parsing saved chat state:', error);
+        return null;
+      }
+    }
+    return null;
+  };
+
+  // Function to check if all keys but one or all keys have values in profile data to set animation trigger in Messages Area.
+  const checkProfileDataComplete = (profileData) => {
+    if (!profileData || typeof profileData !== 'object') {
+      return false;
+    }
+
+    const keys = Object.keys(profileData);
+
+    if (keys.length === 0) {
+      return false;
+    }
+
+    // Check each key individually - count how many have meaningful values (not placeholders)
+    const results = keys.map(key => {
+      const value = profileData[key];
+      let isValid = false;
+
+      // Reject placeholders and empty values
+      if (value === null || value === undefined || value === false) {
+        isValid = false; // Reject false placeholders
+      } else if (typeof value === 'string') {
+        isValid = value.trim() !== ''; // Must have non-whitespace content
+      } else if (typeof value === 'number') {
+        isValid = !isNaN(value); // Allow 0, but not NaN
+      } else if (typeof value === 'boolean') {
+        isValid = value === true; // Only allow true, reject false placeholders
+      } else if (Array.isArray(value)) {
+        isValid = value.length > 0; // Array must have items
+      } else if (typeof value === 'object') {
+        isValid = Object.keys(value).length > 0; // Object must have properties
+      } else {
+        isValid = true; // Other types considered valid
+      }
+
+      return isValid;
+    });
+
+    // Count how many fields have valid values
+    const validCount = results.filter(result => result).length;
+    const totalCount = keys.length;
+
+    // Return true if ALL fields are valid OR all but one field is valid
+    const isComplete = validCount === totalCount || validCount === totalCount - 1;
+
+    return isComplete;
+  };
+
+
+
+  React.useEffect(() => {
+    if (!initialized.current) {
+      const savedState = loadFromSessionStorage();
+      if (savedState) {
+        setMessages(savedState.messages || []);
+        setSessionId(savedState.sessionId || null);
+        setProfileData(savedState.profileData || {});
+        setConversationTitle(savedState.conversationTitle || '');
+        setGeneratedPlan(savedState.generatedPlan || null);
+        setRawPlanJSON(savedState.rawPlanJSON || null);
+        setPlanAnimationNeeded(savedState.planAnimationNeeded || false); // Add this line
+        console.log('Restored chat state from session storage');
+      }
+    }
+  }, []);
+
+  // Add this useEffect to save state whenever it changes
+  React.useEffect(() => {
+    if (initialized.current && (messages.length > 0 || sessionId)) {
+      saveToSessionStorage(messages, sessionId, profileData, conversationTitle, generatedPlan, rawPlanJSON, planAnimationNeeded);
+    }
+  }, [messages, sessionId, profileData, conversationTitle, generatedPlan, rawPlanJSON, planAnimationNeeded]); // Add fromPlannerFlag to dependencies
+
+  // Check if profile data is complete and set animation flag.
+  React.useEffect(() => {
+    const isComplete = checkProfileDataComplete(profileData);
+    setPlanAnimationNeeded(isComplete);
+    console.log('Profile data complete:', isComplete, profileData);
+  }, [profileData]);
+
+
+  const clearChat = () => {
+    setMessages([]);
+    setInput('');
+    setSending(false);
+    setSessionId(null);
+    setProfileData({});
+    setConversationTitle('');
+    setGeneratedPlan(null);
+    setRawPlanJSON(null);
+    setPlanAnimationNeeded(false);
+
+    sessionStorage.removeItem('plannerBotState');
+
+    initialized.current = false;
+
+    setTimeout(() => {
+      initialized.current = true;
+      startChatSession();
+    }, 100);
+  };
+  // ---------------------------------------------------------------------
+
+
+  // Check To See If There Are Chats Happening, Meaining The Plan Should Be Saved.
+  //const isChatActive = safeMessages.length > 1 || sending;
+
+  return (
+    <div className="w-full h-full flex flex-col md:flex-row overflow-hidden">
+      {/* Left side - takes full width on mobile, proportional on desktop */}
+      <div className="flex-1 md:flex-[4] lg:flex-[3.5] xl:max-w-2xl flex flex-col h-full min-h-0 overflow-hidden">
+        <div className="w-full relative flex flex-col h-full min-h-0 overflow-hidden pt-2 xs:-mt-4 sm:pt-0">
+          {/* Mobile Arrow Pull-out Button for Planner - Middle Right */}
+          <motion.button
+            onClick={() => setIsMobilePlannerOpen(!isMobilePlannerOpen)}
+            className="md:hidden fixed right-0 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-8 h-12 text-white transition-all duration-300 rounded-l-lg z-[60] border border-yellow-300 bg-gradient-to-br from-yellow-300 to-yellow-500 hover:from-yellow-400 hover:to-yellow-600 shadow-lg"
+            whileTap={{ scale: 0.95 }}
+            animate={{ rotate: isMobilePlannerOpen ? -90 : 90 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ArrowLeftIcon className="w-6 h-6" />
+          </motion.button>
+
+          {/* Header. */}
+          <div className="flex-shrink-0">
+            <Header
+              conversationTitle={conversationTitle}
+              selectedPlan={selectedPlan}
+              setSelectedPlan={setSelectedPlan}
+              clearChat={clearChat}
+              onPlanSelect={handlePlanSelect}
+            />
+          </div>
+
+          {/* Messages Area */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <MessagesArea safeMessages={safeMessages} planAnimationNeeded={planAnimationNeeded} />
+          </div>
+
+          {/* Input Area */}
+          <div className="flex-shrink-0 pb-2 md:pb-2">
+            <InputArea
+              input={input}
+              setInput={setInput}
+              handleSend={handleSend}
+              handleFileUpload={handleFileUpload}
+              sending={sending}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Right side - Planner Area */}
+      <div className="hidden md:flex md:flex-[5] lg:flex-[5] flex-col h-full min-h-0 pr-4 lg:pr-8 mx-auto">
+        <div className="w-full max-w-5xl mx-auto h-full flex flex-col min-h-0">
+          <PlannerArea
+            animationTriggered={animationTriggered}
+            profileData={profileData}
+            lastChatbotResponse={getLastChatbotResponse}
+            conversationTitle={conversationTitle}
+            generatedPlan={generatedPlan}
+            selectedPlan={selectedPlan}
+          />
+        </div>
+      </div>
+
+      {/* Mobile Planner Overlay */}
+      <AnimatePresence>
+        {isMobilePlannerOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="md:hidden fixed inset-0 bg-black/50 z-40"
+              onClick={() => setIsMobilePlannerOpen(false)}
+            />
+
+            {/* Mobile Planner Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="md:hidden fixed inset-y-0 right-0 w-full max-w-md z-50 bg-white shadow-2xl"
+            >
+              <div className="h-full flex flex-col pt-16 px-4 pb-4">
+                {/* Mobile Planner Content */}
+                <div className="flex-1 overflow-hidden">
+                  <PlannerArea
+                    animationTriggered={animationTriggered}
+                    profileData={profileData}
+                    lastChatbotResponse={getLastChatbotResponse}
+                    conversationTitle={conversationTitle}
+                    generatedPlan={generatedPlan}
+                    selectedPlan={selectedPlan}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Disclaimer */}
+      <div className="hidden md:flex absolute bottom-1 left-0 right-0 justify-center pt-1">
+        <p className="text-xs text-gray-600 text-center font-medium">
+          NestWise Agent can make mistakes. Always verify important financial information.
+        </p>
+      </div>
+    </div>
+  );
+}

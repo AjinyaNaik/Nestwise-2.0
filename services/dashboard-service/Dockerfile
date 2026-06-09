@@ -15,4 +15,4 @@ COPY --from=build /app/publish .
 
 EXPOSE 8083
 
-ENTRYPOINT ["dotnet", "DashboardService.dll"]
+ENTRYPOINT ["dotnet", "dashboard-service.dll"]

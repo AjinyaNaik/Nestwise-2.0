@@ -15,4 +15,4 @@ COPY --from=build /app/publish .
 
 EXPOSE 8081
 
-ENTRYPOINT ["dotnet", "NestWiseCoreAPI.dll"]
+ENTRYPOINT ["dotnet", "nestwise-core-api.dll"]

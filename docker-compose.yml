@@ -3,15 +3,26 @@ version: "3.9"
 services:
 
   frontend:
-    build:
-      context: ./frontend
+    build: ./frontend
     container_name: nestwise-frontend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-    depends_on:
-      - middleman-api
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - PORT=3000
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+      - BROWSER=none
+      - FAST_REFRESH=true
+      - WDS_SOCKET_HOST=localhost 
+      - WDS_SOCKET_PORT=0  
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file: ./.env
+    command: npm start
     networks:
       - nestwise-network
 
@@ -30,6 +41,7 @@ services:
       DB_NAME: nestwise
       DB_USER: nestwise
       DB_PASSWORD: password
+      ASPNETCORE_URLS: http://+:8080
     depends_on:
       - postgres
     networks:
@@ -47,6 +59,7 @@ services:
       DB_NAME: nestwise
       DB_USER: nestwise
       DB_PASSWORD: password
+      ASPNETCORE_URLS: http://+:8081
     depends_on:
       - postgres
     networks:
@@ -80,6 +93,7 @@ services:
       - "3001:3000"
     environment:
       API_URL: http://middleman-api:8080
+      ASPNETCORE_URLS: http://+:3000
     depends_on:
       - middleman-api
     networks:

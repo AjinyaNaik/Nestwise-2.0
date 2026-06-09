@@ -1,25 +1,39 @@
-# Build Stage
-FROM node:22-alpine AS builder
+# # frontend/Dockerfile.dev
+# FROM node:20-alpine
+
+# WORKDIR /app
+
+# COPY package*.json ./
+# RUN npm install
+
+# COPY . .
+
+# EXPOSE 3000
+
+# CMD ["npm", "start"]
+
+FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-
 RUN npm install
 
 COPY . .
 
+ARG REACT_APP_USER_AUTH_URL
+ENV REACT_APP_USER_AUTH_URL=$REACT_APP_USER_AUTH_URL
+
+ARG REACT_APP_LANGRAPH_URL
+ENV REACT_APP_LANGRAPH_URL=$REACT_APP_LANGRAPH_URL
+
+
 RUN npm run build
 
-# Runtime Stage
-FROM node:22-alpine
+RUN npm install -g serve
 
-WORKDIR /app
+ENV PORT=8080 
 
-ENV NODE_ENV=production
+EXPOSE 8080
 
-COPY --from=builder /app ./
-
-EXPOSE 3000
-
-CMD ["npm", "start"]
+CMD ["sh", "-c", "serve -s build -l $PORT"]
