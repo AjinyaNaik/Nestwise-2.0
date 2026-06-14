@@ -37,12 +37,12 @@ services:
       - "8080:8080"
     volumes:
       - ./services/middle-man-api:/app
-      - /app/src/User.Auth.Api/bin
-      - /app/src/User.Auth.Api/obj
-      - /app/src/User.Auth.Core/bin
-      - /app/src/User.Auth.Core/obj
-      - /app/src/User.Auth.Infrastructure/bin
-      - /app/src/User.Auth.Infrastructure/obj
+      - /app/src/Middle.Man.Api/bin        
+      - /app/src/Middle.Man.Api/obj        
+      - /app/src/Middle.Man.Core/bin       
+      - /app/src/Middle.Man.Core/obj       
+      - /app/src/Middle.Man.Infrastructure/bin 
+      - /app/src/Middle.Man.Infrastructure/obj
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - CORE_API_URL=http://nestwise-core-api:8081
@@ -56,7 +56,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       - DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=true
-    command: dotnet watch --project src/User.Auth.Api/User.Auth.Api.csproj run
+    command: dotnet watch --project src/Middle.Man.Api/MiddleMan.Api.csproj run
     depends_on:
       - postgres
     networks:
