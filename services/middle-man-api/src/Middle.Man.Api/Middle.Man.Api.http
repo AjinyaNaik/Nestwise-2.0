@@ -1,0 +1,6 @@
+@Middle.Man.Api_HostAddress = http://localhost:5193
+
+GET {{Middle.Man.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

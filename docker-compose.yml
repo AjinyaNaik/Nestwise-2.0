@@ -15,8 +15,8 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - BROWSER=none
       - FAST_REFRESH=true
-      - WDS_SOCKET_HOST=localhost 
-      - WDS_SOCKET_PORT=0  
+      - WDS_SOCKET_HOST=localhost
+      - WDS_SOCKET_PORT=0
     restart: unless-stopped
     volumes:
       - ./frontend:/app
@@ -28,20 +28,35 @@ services:
 
   middleman-api:
     build:
-      context: ./services/middleman-api
+      context: ./services/middle-man-api
+      dockerfile: Dockerfile.dev
     container_name: nestwise-middleman-api
+    env_file:
+      - .env
     ports:
       - "8080:8080"
+    volumes:
+      - ./services/middle-man-api:/app
+      - /app/src/Middle.Man.Api/bin        
+      - /app/src/Middle.Man.Api/obj        
+      - /app/src/Middle.Man.Core/bin       
+      - /app/src/Middle.Man.Core/obj       
+      - /app/src/Middle.Man.Infrastructure/bin 
+      - /app/src/Middle.Man.Infrastructure/obj
     environment:
-      JWT_SECRET: ${JWT_SECRET}
-      CORE_API_URL: http://nestwise-core-api:8081
-      AI_SERVICE_URL: http://ai-service:8082
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: nestwise
-      DB_USER: nestwise
-      DB_PASSWORD: password
-      ASPNETCORE_URLS: http://+:8080
+      - JWT_SECRET=${JWT_SECRET}
+      - CORE_API_URL=http://nestwise-core-api:8081
+      - AI_SERVICE_URL=http://ai-service:8082
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=nestwise
+      - DB_USER=nestwise
+      - DB_PASSWORD=password
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=true
+    command: dotnet watch --project src/Middle.Man.Api/Middle.Man.Api.csproj run
     depends_on:
       - postgres
     networks:
@@ -50,16 +65,25 @@ services:
   nestwise-core-api:
     build:
       context: ./services/nestwise-core-api
+      dockerfile: Dockerfile.dev
     container_name: nestwise-core-api
     ports:
       - "8081:8081"
+    volumes:
+      - ./services/nestwise-core-api:/app
+      - /app/bin
+      - /app/obj
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: nestwise
-      DB_USER: nestwise
-      DB_PASSWORD: password
-      ASPNETCORE_URLS: http://+:8081
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=nestwise
+      - DB_USER=nestwise
+      - DB_PASSWORD=password
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8081
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=true
+    command: dotnet watch --project nestwise-core-api.csproj run
     depends_on:
       - postgres
     networks:
@@ -88,12 +112,21 @@ services:
   dashboard-service:
     build:
       context: ./services/dashboard-service
+      dockerfile: Dockerfile.dev 
     container_name: nestwise-dashboard
     ports:
       - "3001:3000"
+    volumes:
+      - ./services/dashboard-service:/app
+      - /app/bin
+      - /app/obj
     environment:
-      API_URL: http://middleman-api:8080
-      ASPNETCORE_URLS: http://+:3000
+      - API_URL=http://middleman-api:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:3000
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=true
+    command: dotnet watch --project dashboard-service.csproj run
     depends_on:
       - middleman-api
     networks:
